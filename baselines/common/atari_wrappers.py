@@ -216,6 +216,44 @@ class FrameStack(gym.Wrapper):
         assert len(self.frames) == self.k
         return LazyFrames(list(self.frames))
 
+class FrameStackExt(gym.Wrapper):
+    def __init__(self, env, k):
+        """Hold k+1 frames and last action for succeding process.
+
+        """
+        gym.Wrapper.__init__(self, env)
+        self.k = k
+        self.frames = deque([], maxlen=k+1)
+        shp = env.observation_space.shape
+        self.observation_space = spaces.Box(low=0, high=255, shape=(shp[:-1] + (shp[-1] * k,)), dtype=env.observation_space.dtype)
+        self.last_action = 0
+        self.current_action = 0
+
+    def reset(self):
+        ob = self.env.reset()
+        for _ in range(self.k):
+            self.frames.append(ob)
+        self.current_action = self.last_action = 0
+        return self._get_ob()
+
+    def _get_ob(self):
+        assert len(self.frames) == self.k+1
+        return LazyFrames(list(self.frames)[1:])
+
+    def _get_ob_for_pred(self):
+        assert len(self.frames) == self.k+1
+        return LazyFrames(list(self.frames)[:-1])
+
+    def _get_last_action(self):
+        return self.last_action
+
+    def step(self, action):
+        ob, reward, done, info = self.env.step(action)
+        self.frames.append(ob)
+        self.last_action = self.current_action
+        self.current_action = action
+        return self._get_ob(), reward, done, info
+
 class ScaledFloatFrame(gym.ObservationWrapper):
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)

@@ -5,6 +5,7 @@
 .pytest_cache
 .DS_Store
 .idea
+.vscode
 
 # Setuptools distribution and build folders.
 /dist/
