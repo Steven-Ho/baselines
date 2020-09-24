@@ -240,9 +240,9 @@ class FrameStackExt(gym.Wrapper):
         assert len(self.frames) == self.k+1
         return LazyFrames(list(self.frames)[1:])
 
-    def _get_ob_for_pred(self):
+    def _get_ob_full(self):
         assert len(self.frames) == self.k+1
-        return LazyFrames(list(self.frames)[:-1])
+        return LazyFrames(list(self.frames))
 
     def _get_last_action(self):
         return self.last_action
