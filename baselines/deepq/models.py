@@ -45,3 +45,15 @@ def build_q_func(network, hiddens=[256], dueling=True, layer_norm=False, **netwo
         return tf.keras.Model(inputs=model.inputs, outputs=[q_out])
 
     return q_func_builder
+
+def build_pred_func(hiddens=[256], layer_norm=False, **network_kwargs):
+    from baselines.common.models import get_network_builder
+    convnet_i = get_network_builder('conv_only')(**network_kwargs)
+    convnet_m = get_network_builder('conv_only')(**network_kwargs)
+    mlp_a = get_network_builder('mlp')(**network_kwargs)
+    deconvnet_iu = get_network_builder('deconv')(**network_kwargs)
+    deconvnet_ic = get_network_builder('deconv')(**network_kwargs)
+    deconvnet_m = get_network_builder('deconv')(**network_kwargs)
+
+    def q_func_builder(input_shape, num_actions):
+        pass
