@@ -78,10 +78,16 @@ def deconv(deconvs=[(64, 3, 1), (32, 4, 2), (1, 8, 4)], **deconv_kwargs):
         x_input = tf.keras.Input(shape=input_shape, dtype=tf.float32)
         h = x_input
         with tf.name_scope("deconvnet"):
-            for num_outputs, kernel_size, stride in deconvs:
-                h = tf.keras.layers.Conv2DTranspose(
-                    filters=num_outputs, kernel_size=kernel_size, strides=stride,
-                    activation='relu', use_bias=False, **deconv_kwargs)(h)
+            for i in range(len(deconvs)):
+                num_outputs, kernel_size, stride = deconvs[i]
+                if i < len(deconvs) - 1:
+                    h = tf.keras.layers.Conv2DTranspose(
+                        filters=num_outputs, kernel_size=kernel_size, strides=stride,
+                        activation='relu', use_bias=False, **deconv_kwargs)(h)
+                else:
+                    h = tf.keras.layers.Conv2DTranspose(
+                        filters=num_outputs, kernel_size=kernel_size, strides=stride,
+                        activation='sigmoid', use_bias=False, **deconv_kwargs)(h)
 
         network = tf.keras.Model(inputs=[x_input], outputs=[h])
         return network

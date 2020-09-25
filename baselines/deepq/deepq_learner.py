@@ -95,6 +95,7 @@ The functions in this model:
 
 """
 import tensorflow as tf
+import numpy as np
 
 @tf.function
 def huber_loss(x, delta=1.0):
@@ -104,6 +105,56 @@ def huber_loss(x, delta=1.0):
         tf.square(x) * 0.5,
         delta * (tf.abs(x) - 0.5 * delta)
     )
+
+class Predictor(tf.Module):
+
+    def __init__(self, func_list, observation_shape, num_actions, lr, grad_norm_clipping=None):
+        self.num_actions = num_actions
+        image_func, mask_func = func_list
+        self.grad_norm_clipping = grad_norm_clipping
+
+        self.optimizer = tf.keras.optimizers.Adam(lr)
+        latent_shape = (7, 7, 64)
+        obs_hist_shape = (84, 84, 4)
+        obs_curr_shape = (84, 84, 1)
+        with tf.name_scope('image_split_network'):
+            self.image_split_network = image_func(obs_hist_shape, latent_shape, num_actions)
+        with tf.name_scope('mask_network'):
+            self.mask_network = mask_func(obs_curr_shape, latent_shape)
+
+    def get_mask(self, obs_curr):
+        m = self.mask_network(obs_curr)
+        return m
+    
+    def get_image_split(self, obs_hist, action):
+        iu, ic = self.image_split_network([obs_hist])
+        return iu, ic
+
+    def train(self, obs0, action, obs1):
+        obs0_hist = obs0[...,:-1]
+        obs0_curr = obs0[...,-1]
+        obs0_curr = tf.expand_dims(obs0_curr, axis=-1)
+        a = tf.one_hot(action, self.num_actions, dtype=tf.float32)
+        mse_loss = tf.keras.losses.MeanSquaredError()
+        abs_loss = tf.keras.losses.MeanAbsoluteError()
+
+        with tf.GradientTape() as tape:
+            iu, ic = self.get_image_split(obs0_hist, a)
+            m = self.get_mask(obs0_curr)
+            x1 = tf.math.multiply(m, obs0_curr)
+            x2 = tf.math.multiply(1-m, obs0_curr)
+            loss_masked = mse_loss(ic, x1) + mse_loss(iu, x2)
+            loss_recon = mse_loss(obs0_curr, ic+iu)
+            loss_reg = abs_loss(0, m)
+            loss_all = loss_masked + loss_recon + 0.001*loss_reg
+
+        grads = tape.gradient(loss_all, self.image_split_network.trainable_variables + self.mask_network.trainable_variables)
+        if self.grad_norm_clipping:
+            clipped_grads = []
+            for g in grads:
+                clipped_grads.append(tf.clip_by_norm(g, self.grad_norm_clipping))
+            grads = clipped_grads
+        self.optimizer.apply_gradients(zip(grads, self.image_split_network.trainable_variables + self.mask_network.trainable_variables))
 
 class DEEPQ(tf.Module):
 
@@ -176,7 +227,8 @@ class DEEPQ(tf.Module):
         clipped_grads = []
         for grad in grads:
           clipped_grads.append(tf.clip_by_norm(grad, self.grad_norm_clipping))
-        clipped_grads = grads
+        # clipped_grads = grads
+        grads = clipped_grads
       grads_and_vars = zip(grads, self.q_network.trainable_variables)
       self.optimizer.apply_gradients(grads_and_vars)
 

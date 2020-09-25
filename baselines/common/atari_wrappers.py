@@ -231,7 +231,7 @@ class FrameStackExt(gym.Wrapper):
 
     def reset(self):
         ob = self.env.reset()
-        for _ in range(self.k):
+        for _ in range(self.k+1):
             self.frames.append(ob)
         self.current_action = self.last_action = 0
         return self._get_ob()
@@ -323,6 +323,6 @@ def wrap_deepmind(env, episode_life=True, clip_rewards=True, frame_stack=False, 
     if clip_rewards:
         env = ClipRewardEnv(env)
     if frame_stack:
-        env = FrameStack(env, 4)
+        env = FrameStackExt(env, 4)
     return env
 

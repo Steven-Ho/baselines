@@ -9,9 +9,9 @@ from baselines.common.vec_env.vec_env import VecEnv
 from baselines.common import set_global_seeds
 
 from baselines import deepq
-from baselines.deepq.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from baselines.deepq.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer, PredictionReplayBuffer
 
-from baselines.deepq.models import build_q_func
+from baselines.deepq.models import build_q_func, build_pred_func
 
 
 
@@ -113,6 +113,7 @@ def learn(env,
     set_global_seeds(seed)
 
     q_func = build_q_func(network, **network_kwargs)
+    pred_func = build_pred_func()
 
     # capture the shape outside the closure so that the env object is not serialized
     # by cloudpickle when serializing make_obs_ph
@@ -127,6 +128,14 @@ def learn(env,
         grad_norm_clipping=10,
         gamma=gamma,
         param_noise=param_noise
+    )
+
+    pred_model = deepq.Predictor(
+        func_list=pred_func,
+        observation_shape=env.observation_shape.shape,
+        num_actions=env.action_space.n,
+        lr=lr,
+        grad_norm_clipping=10
     )
 
     if load_path is not None:
@@ -147,6 +156,7 @@ def learn(env,
     else:
         replay_buffer = ReplayBuffer(buffer_size)
         beta_schedule = None
+    pred_replay_buffer = PredictionReplayBuffer(buffer_size)
     # Create the schedule for exploration starting from 1.
     exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * total_timesteps),
                                  initial_p=1.0,
