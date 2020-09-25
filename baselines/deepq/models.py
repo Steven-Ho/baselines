@@ -50,7 +50,7 @@ def build_pred_func(hiddens=[256], layer_norm=False, **network_kwargs):
     from baselines.common.models import get_network_builder
     convnet_i = get_network_builder('conv_only')(**network_kwargs)
     convnet_m = get_network_builder('conv_only')(**network_kwargs)
-    mlp_a = get_network_builder('mlp')(**network_kwargs)
+    mlp_a = get_network_builder('mlp_general')(**network_kwargs)
     deconvnet_iu = get_network_builder('deconv')(**network_kwargs)
     deconvnet_ic = get_network_builder('deconv')(**network_kwargs)
     deconvnet_m = get_network_builder('deconv')(**network_kwargs)
@@ -62,13 +62,11 @@ def build_pred_func(hiddens=[256], layer_norm=False, **network_kwargs):
         action_emb = mlp_a_model.outputs[0]
 
         deconvnet_iu_model = deconvnet_iu(latent_shape)
-        deconvnet_iu_model.inputs = [obs_hist_latent]
-        iu = deconvnet_iu_model.outputs[0]
+        iu = deconvnet_iu_model(obs_hist_latent)
         deconvnet_ic_model = deconvnet_ic(latent_shape)
-        action_emb = tf.keras.layers.Reshape(latent_shape)(action_emb)
+        action_emb = tf.keras.layers.Reshape((7, 7, 8))(action_emb)
         concat_latent = tf.keras.layers.Concatenate()([obs_hist_latent, action_emb])
-        deconvnet_ic_model.inputs = [concat_latent]
-        ic = deconvnet_ic_model.outputs[0]
+        ic = deconvnet_ic_model(concat_latent)
 
         return tf.keras.Model(inputs=convnet_i_model.inputs + mlp_a_model.inputs, 
             outputs=[iu, ic])
@@ -78,8 +76,7 @@ def build_pred_func(hiddens=[256], layer_norm=False, **network_kwargs):
         obs_curr_latent = convnet_m_model.outputs[0]
 
         deconvnet_m_model = deconvnet_m(latent_shape)
-        deconvnet_m_model.inputs = [obs_curr_latent]
-        m = deconvnet_m_model.outputs[0]
+        m = deconvnet_m_model(obs_curr_latent)
 
         return tf.keras.Model(inputs=convnet_m_model.inputs, outputs=[m])
 

@@ -132,7 +132,7 @@ def learn(env,
 
     pred_model = deepq.Predictor(
         func_list=pred_func,
-        observation_shape=env.observation_shape.shape,
+        observation_shape=env.observation_space.shape,
         num_actions=env.action_space.n,
         lr=lr,
         grad_norm_clipping=10

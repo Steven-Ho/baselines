@@ -61,6 +61,43 @@ def mlp(num_layers=2, num_hidden=64, activation=tf.tanh):
 
     return network_fn
 
+@register("mlp_general")
+def mlp_general(num_layers=2, num_hidden=512, num_output=392, activation=tf.tanh):
+    """
+    Stack of fully-connected layers to be used in a policy / q-function approximator
+
+    Parameters:
+    ----------
+
+    num_layers: int                 number of fully-connected layers (default: 2)
+
+    num_hidden: int                 size of fully-connected layers (default: 64)
+
+    activation:                     activation function (default: tf.tanh)
+
+    Returns:
+    -------
+
+    function that builds fully connected network with a given input tensor / placeholder
+    """
+    def network_fn(input_shape):
+        print('input shape is {}'.format(input_shape))
+        x_input = tf.keras.Input(shape=input_shape)
+        # h = tf.keras.layers.Flatten(x_input)
+        h = x_input
+        for i in range(num_layers):
+            if i < num_layers - 1:
+                h = tf.keras.layers.Dense(units=num_hidden, kernel_initializer=ortho_init(np.sqrt(2)),
+                                        name='mlp_fc{}'.format(i), activation=activation)(h)
+            else:
+                h = tf.keras.layers.Dense(units=num_output, kernel_initializer=ortho_init(np.sqrt(2)),
+                                        name='mlp_fc{}'.format(i), activation='relu')(h)
+
+        network = tf.keras.Model(inputs=[x_input], outputs=[h])
+        return network
+
+    return network_fn
+
 
 @register("cnn")
 def cnn(**conv_kwargs):
