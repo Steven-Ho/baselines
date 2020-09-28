@@ -167,6 +167,7 @@ def learn(env,
     episode_rewards = [0.0]
     saved_mean_reward = None
     obs = env.reset()
+    obs_hist = env._get_ob_full()
     # always mimic the vectorized env
     if not isinstance(env, VecEnv):
         obs = np.expand_dims(np.array(obs), axis=0)
@@ -194,6 +195,9 @@ def learn(env,
         action = action[0].numpy()
         reset = False
         new_obs, rew, done, _ = env.step(action)
+        new_obs_hist = env._get_ob_full()
+        last_action = env._get_last_action()
+        pred_replay_buffer.add(np.array(obs_hist), last_action, np.array(new_obs_hist))
         # Store transition in the replay buffer.
         if not isinstance(env, VecEnv):
             new_obs = np.expand_dims(np.array(new_obs), axis=0)
@@ -203,6 +207,7 @@ def learn(env,
         # # Store transition in the replay buffer.
         # replay_buffer.add(obs, action, rew, new_obs, float(done))
         obs = new_obs
+        obs_hist = new_obs_hist
 
         episode_rewards[-1] += rew
         if done:
@@ -227,6 +232,12 @@ def learn(env,
             if prioritized_replay:
                 new_priorities = np.abs(td_errors) + prioritized_replay_eps
                 replay_buffer.update_priorities(batch_idxes, new_priorities)
+
+            obs_hist_batch, action_batch, new_obs_hist_batch = pred_replay_buffer.sample(batch_size)
+            obs_hist_batch, action_batch = tf.constant(obs_hist_batch), tf.constant(action_batch)
+            new_obs_hist_batch = tf.constant(new_obs_hist_batch)
+            loss = pred_model.train(obs_hist_batch, action_batch, new_obs_hist_batch)
+            # print("Steps: {}, loss: {}".format(t, loss))
 
         if t > learning_starts and t % target_network_update_freq == 0:
             # Update target network periodically.

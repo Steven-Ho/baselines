@@ -63,7 +63,7 @@ def build_pred_func(hiddens=[256], layer_norm=False, **network_kwargs):
 
         deconvnet_iu_model = deconvnet_iu(latent_shape)
         iu = deconvnet_iu_model(obs_hist_latent)
-        deconvnet_ic_model = deconvnet_ic(latent_shape)
+        deconvnet_ic_model = deconvnet_ic((7, 7, 72))
         action_emb = tf.keras.layers.Reshape((7, 7, 8))(action_emb)
         concat_latent = tf.keras.layers.Concatenate()([obs_hist_latent, action_emb])
         ic = deconvnet_ic_model(concat_latent)

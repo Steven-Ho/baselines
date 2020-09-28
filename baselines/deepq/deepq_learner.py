@@ -127,7 +127,7 @@ class Predictor(tf.Module):
         return m
     
     def get_image_split(self, obs_hist, action):
-        iu, ic = self.image_split_network([obs_hist])
+        iu, ic = self.image_split_network([obs_hist, action])
         return iu, ic
 
     def train(self, obs0, action, obs1):
@@ -141,6 +141,7 @@ class Predictor(tf.Module):
         with tf.GradientTape() as tape:
             iu, ic = self.get_image_split(obs0_hist, a)
             m = self.get_mask(obs0_curr)
+            obs0_curr = tf.cast(obs0_curr, tf.float32)/255.
             x1 = tf.math.multiply(m, obs0_curr)
             x2 = tf.math.multiply(1-m, obs0_curr)
             loss_masked = mse_loss(ic, x1) + mse_loss(iu, x2)
@@ -155,6 +156,7 @@ class Predictor(tf.Module):
                 clipped_grads.append(tf.clip_by_norm(g, self.grad_norm_clipping))
             grads = clipped_grads
         self.optimizer.apply_gradients(zip(grads, self.image_split_network.trainable_variables + self.mask_network.trainable_variables))
+        return loss_all
 
 class DEEPQ(tf.Module):
 
