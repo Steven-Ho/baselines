@@ -156,6 +156,33 @@ def conv_only(convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)], **conv_kwargs):
         return network
     return network_fn
 
+@register("conv_mlp")
+def conv_mlp(convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)], **conv_kwargs):
+    '''
+    convolutions-only net
+    Parameters:
+    ----------
+    conv:       list of triples (filter_number, filter_size, stride) specifying parameters for each layer.
+    Returns:
+    function that takes tensorflow tensor as input and returns the output of the last convolutional layer
+    '''
+
+    def network_fn(input_shape, output_shape):
+        print('input shape is {}'.format(input_shape))
+        x_input = tf.keras.Input(shape=input_shape, dtype=tf.float32)
+        h = x_input
+        with tf.name_scope("convnet"):
+            for num_outputs, kernel_size, stride in convs:
+                h = tf.keras.layers.Conv2D(
+                    filters=num_outputs, kernel_size=kernel_size, strides=stride,
+                    activation='relu', **conv_kwargs)(h)
+            h = tf.keras.layers.Flatten()(h)
+            h = tf.keras.layers.Dense(units=output_shape, kernel_initializer=ortho_init(np.sqrt(2)),
+                                    name='mlp_fc')(h)
+            h = tf.keras.layers.Softmax()(h)
+        network = tf.keras.Model(inputs=[x_input], outputs=[h])
+        return network
+    return network_fn
 
 def get_network_builder(name):
     """

@@ -236,7 +236,7 @@ def learn(env,
             obs_hist_batch, action_batch, new_obs_hist_batch = pred_replay_buffer.sample(batch_size)
             obs_hist_batch, action_batch = tf.constant(obs_hist_batch), tf.constant(action_batch)
             new_obs_hist_batch = tf.constant(new_obs_hist_batch)
-            loss = pred_model.train(obs_hist_batch, action_batch, new_obs_hist_batch)
+            loss, errors = pred_model.train(obs_hist_batch, action_batch, new_obs_hist_batch)
             # print("Steps: {}, loss: {}".format(t, loss))
 
         if t > learning_starts and t % target_network_update_freq == 0:

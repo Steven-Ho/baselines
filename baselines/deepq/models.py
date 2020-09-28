@@ -54,6 +54,7 @@ def build_pred_func(hiddens=[256], layer_norm=False, **network_kwargs):
     deconvnet_iu = get_network_builder('deconv')(**network_kwargs)
     deconvnet_ic = get_network_builder('deconv')(**network_kwargs)
     deconvnet_m = get_network_builder('deconv')(**network_kwargs)
+    convnet_a = get_network_builder('conv_mlp')(**network_kwargs)
 
     def image_func_builder(input_shape, latent_shape, num_actions):
         convnet_i_model = convnet_i(input_shape)
@@ -80,4 +81,10 @@ def build_pred_func(hiddens=[256], layer_norm=False, **network_kwargs):
 
         return tf.keras.Model(inputs=convnet_m_model.inputs, outputs=[m])
 
-    return [image_func_builder, mask_func_builer]
+    def action_pred_func_builder(input_shape, num_actions):
+        a_pred_model = convnet_a((84, 84, 2), num_actions)
+        a_prob = a_pred_model.outputs[0]
+
+        return tf.keras.Model(inputs=a_pred_model.inputs, outputs=a_prob)
+
+    return [image_func_builder, mask_func_builer, action_pred_func_builder]

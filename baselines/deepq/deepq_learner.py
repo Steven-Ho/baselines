@@ -110,7 +110,7 @@ class Predictor(tf.Module):
 
     def __init__(self, func_list, observation_shape, num_actions, lr, grad_norm_clipping=None):
         self.num_actions = num_actions
-        image_func, mask_func = func_list
+        image_func, mask_func, action_func = func_list
         self.grad_norm_clipping = grad_norm_clipping
 
         self.optimizer = tf.keras.optimizers.Adam(lr)
@@ -121,6 +121,8 @@ class Predictor(tf.Module):
             self.image_split_network = image_func(obs_hist_shape, latent_shape, num_actions)
         with tf.name_scope('mask_network'):
             self.mask_network = mask_func(obs_curr_shape, latent_shape)
+        with tf.name_scope('action_pred_network'):
+            self.action_pred_network = action_func(obs_curr_shape, num_actions)
 
     def get_mask(self, obs_curr):
         m = self.mask_network(obs_curr)
@@ -130,24 +132,50 @@ class Predictor(tf.Module):
         iu, ic = self.image_split_network([obs_hist, action])
         return iu, ic
 
+    def get_action_pred(self, masks):
+        a_prob = self.action_pred_network(masks)
+        return a_prob
+
     def train(self, obs0, action, obs1):
         obs0_hist = obs0[...,:-1]
         obs0_curr = obs0[...,-1]
         obs0_curr = tf.expand_dims(obs0_curr, axis=-1)
+        obs0_old = obs0[...,-2]
+        obs0_old = tf.expand_dims(obs0_old, axis=-1)
         a = tf.one_hot(action, self.num_actions, dtype=tf.float32)
         mse_loss = tf.keras.losses.MeanSquaredError()
         abs_loss = tf.keras.losses.MeanAbsoluteError()
 
         with tf.GradientTape() as tape:
+            m_old = self.get_mask(obs0_old)
+            m = self.get_mask(obs0_curr)
+            masks = tf.stop_gradient(tf.concat([m_old, m], axis=-1))
+            a_prob = self.get_action_pred(masks)
+            errors = tf.reduce_mean(tf.reduce_sum(-tf.math.log(a_prob)*a, axis=1))
+
+        grads = tape.gradient(errors, self.action_pred_network.trainable_variables)
+        if self.grad_norm_clipping:
+            clipped_grads = []
+            for g in grads:
+                clipped_grads.append(tf.clip_by_norm(g, self.grad_norm_clipping))
+            grads = clipped_grads
+        self.optimizer.apply_gradients(zip(grads, self.action_pred_network.trainable_variables))
+
+        with tf.GradientTape() as tape:
             iu, ic = self.get_image_split(obs0_hist, a)
             m = self.get_mask(obs0_curr)
+            m_old = self.get_mask(obs0_old)
+            masks = tf.concat([m_old, m], axis=-1)
+            a_prob = self.get_action_pred(masks)
+            errors = tf.reduce_mean(tf.reduce_sum(-tf.math.log(a_prob)*a, axis=1))
             obs0_curr = tf.cast(obs0_curr, tf.float32)/255.
             x1 = tf.math.multiply(m, obs0_curr)
             x2 = tf.math.multiply(1-m, obs0_curr)
             loss_masked = mse_loss(ic, x1) + mse_loss(iu, x2)
             loss_recon = mse_loss(obs0_curr, ic+iu)
             loss_reg = abs_loss(0, m)
-            loss_all = loss_masked + loss_recon + 0.001*loss_reg
+            loss_ap = errors
+            loss_all = loss_masked + loss_recon + 0.001*loss_reg + 0.1*loss_ap
 
         grads = tape.gradient(loss_all, self.image_split_network.trainable_variables + self.mask_network.trainable_variables)
         if self.grad_norm_clipping:
@@ -156,7 +184,7 @@ class Predictor(tf.Module):
                 clipped_grads.append(tf.clip_by_norm(g, self.grad_norm_clipping))
             grads = clipped_grads
         self.optimizer.apply_gradients(zip(grads, self.image_split_network.trainable_variables + self.mask_network.trainable_variables))
-        return loss_all
+        return loss_all, errors
 
 class DEEPQ(tf.Module):
 
