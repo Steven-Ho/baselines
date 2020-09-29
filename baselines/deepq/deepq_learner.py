@@ -124,18 +124,22 @@ class Predictor(tf.Module):
         with tf.name_scope('action_pred_network'):
             self.action_pred_network = action_func(obs_curr_shape, num_actions)
 
+    @tf.function
     def get_mask(self, obs_curr):
         m = self.mask_network(obs_curr)
         return m
     
+    @tf.function
     def get_image_split(self, obs_hist, action):
         iu, ic = self.image_split_network([obs_hist, action])
         return iu, ic
 
+    @tf.function
     def get_action_pred(self, masks):
         a_prob = self.action_pred_network(masks)
         return a_prob
 
+    @tf.function
     def train(self, obs0, action, obs1):
         obs0_hist = obs0[...,:-1]
         obs0_curr = obs0[...,-1]
@@ -184,6 +188,7 @@ class Predictor(tf.Module):
                 clipped_grads.append(tf.clip_by_norm(g, self.grad_norm_clipping))
             grads = clipped_grads
         self.optimizer.apply_gradients(zip(grads, self.image_split_network.trainable_variables + self.mask_network.trainable_variables))
+
         return loss_all, errors
 
 class DEEPQ(tf.Module):
