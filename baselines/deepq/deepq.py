@@ -108,12 +108,30 @@ def learn(env,
         Wrapper over act function. Adds ability to save it and load it.
         See header of baselines/deepq/categorical.py for details on the act function.
     """
+    # Utilities
+    def get_masked_obs(pred_model, obs):
+        masked_obs = []
+        for k in range(obs.shape[-1]):
+            o = tf.expand_dims(obs[...,k], -1)
+            mask = pred_model.get_mask(o)
+            mask = tf.cast(mask * 255., tf.uint8)
+            masked_obs.append(tf.squeeze(tf.math.multiply(mask, o), axis=-1))
+        masked_obs = tf.stack(masked_obs, axis=-1)
+        return masked_obs
+    # Running options
+    INFER_CONTROLLABLE_OBJECT = True
+    ENHANCE_Q_NETWORK = True
+    ENHANCE_Q_NETWORK = ENHANCE_Q_NETWORK and INFER_CONTROLLABLE_OBJECT
     # Create all the functions necessary to train the model
 
     set_global_seeds(seed)
 
-    q_func = build_q_func(network, **network_kwargs)
-    pred_func = build_pred_func()
+    if ENHANCE_Q_NETWORK:
+        q_func = build_q_func('conv_2', hiddens=[512], **network_kwargs)
+    else:
+        q_func = build_q_func(network, **network_kwargs)
+    if INFER_CONTROLLABLE_OBJECT:
+        pred_func = build_pred_func()
 
     # capture the shape outside the closure so that the env object is not serialized
     # by cloudpickle when serializing make_obs_ph
@@ -130,13 +148,14 @@ def learn(env,
         param_noise=param_noise
     )
 
-    pred_model = deepq.Predictor(
-        func_list=pred_func,
-        observation_shape=env.observation_space.shape,
-        num_actions=env.action_space.n,
-        lr=lr,
-        grad_norm_clipping=10
-    )
+    if INFER_CONTROLLABLE_OBJECT:
+        pred_model = deepq.Predictor(
+            func_list=pred_func,
+            observation_shape=env.observation_space.shape,
+            num_actions=env.action_space.n,
+            lr=lr,
+            grad_norm_clipping=10
+        )
 
     if load_path is not None:
         load_path = osp.expanduser(load_path)
@@ -156,7 +175,9 @@ def learn(env,
     else:
         replay_buffer = ReplayBuffer(buffer_size)
         beta_schedule = None
-    pred_replay_buffer = PredictionReplayBuffer(buffer_size)
+    
+    if INFER_CONTROLLABLE_OBJECT:
+        pred_replay_buffer = PredictionReplayBuffer(buffer_size)
     # Create the schedule for exploration starting from 1.
     exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * total_timesteps),
                                  initial_p=1.0,
@@ -167,7 +188,8 @@ def learn(env,
     episode_rewards = [0.0]
     saved_mean_reward = None
     obs = env.reset()
-    obs_hist = env._get_ob_full()
+    if INFER_CONTROLLABLE_OBJECT:
+        obs_hist = env._get_ob_full()
     # always mimic the vectorized env
     if not isinstance(env, VecEnv):
         obs = np.expand_dims(np.array(obs), axis=0)
@@ -191,13 +213,18 @@ def learn(env,
             kwargs['reset'] = reset
             kwargs['update_param_noise_threshold'] = update_param_noise_threshold
             kwargs['update_param_noise_scale'] = True
-        action, _, _, _ = model.step(tf.constant(obs), update_eps=update_eps, **kwargs)
+        if ENHANCE_Q_NETWORK:
+            masked_obs = get_masked_obs(pred_model, obs)
+            action, _, _, _ = model.step([tf.constant(obs), tf.constant(masked_obs)], update_eps=update_eps, **kwargs)
+        else:
+            action, _, _, _ = model.step(tf.constant(obs), update_eps=update_eps, **kwargs)
         action = action[0].numpy()
         reset = False
         new_obs, rew, done, _ = env.step(action)
-        new_obs_hist = env._get_ob_full()
-        last_action = env._get_last_action()
-        pred_replay_buffer.add(np.array(obs_hist), last_action, np.array(new_obs_hist))
+        if INFER_CONTROLLABLE_OBJECT:
+            new_obs_hist = env._get_ob_full()
+            last_action = env._get_last_action()
+            pred_replay_buffer.add(np.array(obs_hist), last_action, np.array(new_obs_hist))
         # Store transition in the replay buffer.
         if not isinstance(env, VecEnv):
             new_obs = np.expand_dims(np.array(new_obs), axis=0)
@@ -207,7 +234,8 @@ def learn(env,
         # # Store transition in the replay buffer.
         # replay_buffer.add(obs, action, rew, new_obs, float(done))
         obs = new_obs
-        obs_hist = new_obs_hist
+        if INFER_CONTROLLABLE_OBJECT:
+            obs_hist = new_obs_hist
 
         episode_rewards[-1] += rew
         if done:
@@ -228,16 +256,21 @@ def learn(env,
             obses_t, obses_tp1 = tf.constant(obses_t), tf.constant(obses_tp1)
             actions, rewards, dones = tf.constant(actions), tf.constant(rewards), tf.constant(dones)
             weights = tf.constant(weights)
-            td_errors = model.train(obses_t, actions, rewards, obses_tp1, dones, weights)
+            if ENHANCE_Q_NETWORK:
+                masked_obses_t = get_masked_obs(pred_model, obses_t)
+                masked_obses_tp1 = get_masked_obs(pred_model, obses_tp1)
+                td_errors = model.train([obses_t, masked_obses_t], actions, rewards, [obses_tp1, masked_obses_tp1], dones, weights)
+            else:
+                td_errors = model.train(obses_t, actions, rewards, obses_tp1, dones, weights)
             if prioritized_replay:
                 new_priorities = np.abs(td_errors) + prioritized_replay_eps
                 replay_buffer.update_priorities(batch_idxes, new_priorities)
 
-            obs_hist_batch, action_batch, new_obs_hist_batch = pred_replay_buffer.sample(batch_size)
-            obs_hist_batch, action_batch = tf.constant(obs_hist_batch), tf.constant(action_batch)
-            new_obs_hist_batch = tf.constant(new_obs_hist_batch)
-            loss, errors = pred_model.train(obs_hist_batch, action_batch, new_obs_hist_batch)
-            # print("Steps: {}, loss: {}".format(t, loss))
+            if INFER_CONTROLLABLE_OBJECT:
+                obs_hist_batch, action_batch, new_obs_hist_batch = pred_replay_buffer.sample(batch_size)
+                obs_hist_batch, action_batch = tf.constant(obs_hist_batch), tf.constant(action_batch)
+                new_obs_hist_batch = tf.constant(new_obs_hist_batch)
+                loss, errors = pred_model.train(obs_hist_batch, action_batch, new_obs_hist_batch)
 
         if t > learning_starts and t % target_network_update_freq == 0:
             # Update target network periodically.

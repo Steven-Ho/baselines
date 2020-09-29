@@ -130,6 +130,44 @@ def deconv(deconvs=[(64, 3, 1), (32, 4, 2), (1, 8, 4)], **deconv_kwargs):
         return network
     return network_fn
 
+@register("conv_2")
+def conv_2(convs=[(32, 8, 4), (32, 4, 2), (64, 3, 1)], **conv_kwargs):
+    '''
+    convolutions-only net
+    Parameters:
+    ----------
+    conv:       list of triples (filter_number, filter_size, stride) specifying parameters for each layer.
+    Returns:
+    function that takes tensorflow tensor as input and returns the output of the last convolutional layer
+    '''
+
+    def network_fn(input_shape):
+        print('input shape is {}'.format(input_shape))
+        x_input = tf.keras.Input(shape=input_shape, dtype=tf.uint8)
+        y_input = tf.keras.Input(shape=input_shape, dtype=tf.uint8)
+        hx = x_input
+        hx = tf.cast(hx, tf.float32) / 255.
+        hy = y_input
+        hy = tf.cast(hy, tf.float32) / 255.
+        with tf.name_scope("convnet"):
+            for i in range(len(convs)):
+                num_outputs, kernel_size, stride = convs[i]
+                if i < len(convs) - 1:
+                    hx = tf.keras.layers.Conv2D(
+                        filters=num_outputs, kernel_size=kernel_size, strides=stride,
+                        activation='relu', **conv_kwargs)(hx)
+                    hy = tf.keras.layers.Conv2D(
+                        filters=num_outputs, kernel_size=kernel_size, strides=stride,
+                        activation='relu', **conv_kwargs)(hy)
+                else:
+                    h = tf.keras.layers.concatenate([hx, hy])
+                    h = tf.keras.layers.Conv2D(
+                        filters=num_outputs, kernel_size=kernel_size, strides=stride,
+                        activation='relu', **conv_kwargs)(h)                    
+        network = tf.keras.Model(inputs=[x_input, y_input], outputs=[h])
+        return network
+    return network_fn
+
 @register("conv_only")
 def conv_only(convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)], **conv_kwargs):
     '''
