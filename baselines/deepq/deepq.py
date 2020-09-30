@@ -39,6 +39,7 @@ def learn(env,
           param_noise=False,
           callback=None,
           load_path=None,
+          enhanced=False,
           **network_kwargs
             ):
     """Train a deepq model.
@@ -119,8 +120,8 @@ def learn(env,
         masked_obs = tf.stack(masked_obs, axis=-1)
         return masked_obs
     # Running options
-    INFER_CONTROLLABLE_OBJECT = True
-    ENHANCE_Q_NETWORK = True
+    INFER_CONTROLLABLE_OBJECT = enhanced
+    ENHANCE_Q_NETWORK = enhanced
     ENHANCE_Q_NETWORK = ENHANCE_Q_NETWORK and INFER_CONTROLLABLE_OBJECT
     # Create all the functions necessary to train the model
 
