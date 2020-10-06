@@ -136,7 +136,33 @@ class CSVOutputFormat(KVWriter):
     def close(self):
         self.file.close()
 
+class TensorBoardOutputFormat(KVWriter):
+    """
+    Dumps key/value pairs into TensorBoard's numeric format.
+    """
+    def __init__(self, dir):
+        os.makedirs(dir, exist_ok=True)
+        self.dir = dir
+        self.step = 1
+        prefix = 'events'
+        path = osp.join(osp.abspath(dir), prefix)
+        import tensorflow as tf
+        from tensorflow.python.util import compat
+        self.tf = tf
+        self.writer = tf.summary.create_file_writer(compat.as_bytes(path))
 
+    def writekvs(self, kvs):
+        with self.writer.as_default():
+            for k, v in kvs.items():
+                self.tf.summary.scalar(k, v, step=self.step)
+            self.writer.flush()
+        self.step += 1
+
+    def close(self):
+        if self.writer:
+            self.writer.close()
+            self.writer = None
+'''
 class TensorBoardOutputFormat(KVWriter):
     """
     Dumps key/value pairs into TensorBoard's numeric format.
@@ -171,7 +197,7 @@ class TensorBoardOutputFormat(KVWriter):
         if self.writer:
             self.writer.Close()
             self.writer = None
-
+'''
 def make_output_format(format, ev_dir, log_suffix=''):
     os.makedirs(ev_dir, exist_ok=True)
     if format == 'stdout':
@@ -388,7 +414,7 @@ def configure(dir=None, format_strs=None, comm=None, log_suffix=''):
 
     if format_strs is None:
         if rank == 0:
-            format_strs = os.getenv('OPENAI_LOG_FORMAT', 'stdout,log,csv').split(',')
+            format_strs = os.getenv('OPENAI_LOG_FORMAT', 'stdout,log,csv,tensorboard').split(',')
         else:
             format_strs = os.getenv('OPENAI_LOG_FORMAT_MPI', 'log').split(',')
     format_strs = filter(None, format_strs)
