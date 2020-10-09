@@ -1,5 +1,5 @@
 import os.path as osp
-
+import os
 import tensorflow as tf
 import numpy as np
 
@@ -118,7 +118,7 @@ def learn(env,
             mask = tf.cast(mask * 255., tf.uint8)
             masked_obs.append(tf.squeeze(tf.math.multiply(mask, o), axis=-1))
         masked_obs = tf.stack(masked_obs, axis=-1)
-        return masked_obs
+        return masked_obs, mask
     # Running options
     INFER_CONTROLLABLE_OBJECT = enhanced
     ENHANCE_Q_NETWORK = enhanced
@@ -196,6 +196,10 @@ def learn(env,
         obs = np.expand_dims(np.array(obs), axis=0)
     reset = True
 
+    img_path = os.getcwd() + '/logs'
+    if not os.path.exists(img_path):
+        os.mkdir(img_path)
+    img_logger = tf.summary.create_file_writer(img_path)
     for t in range(total_timesteps):
         if callback is not None:
             if callback(locals(), globals()):
@@ -215,7 +219,7 @@ def learn(env,
             kwargs['update_param_noise_threshold'] = update_param_noise_threshold
             kwargs['update_param_noise_scale'] = True
         if ENHANCE_Q_NETWORK:
-            masked_obs = get_masked_obs(pred_model, obs)
+            masked_obs, mask = get_masked_obs(pred_model, obs)
             action, _, _, _ = model.step([tf.constant(obs), tf.constant(masked_obs)], update_eps=update_eps, **kwargs)
         else:
             action, _, _, _ = model.step(tf.constant(obs), update_eps=update_eps, **kwargs)
@@ -279,6 +283,12 @@ def learn(env,
 
         mean_100ep_reward = round(np.mean(episode_rewards[-101:-1]), 1)
         num_episodes = len(episode_rewards)
+        if t % 1000 == 0:
+            with img_logger.as_default():
+                tf.summary.image("masked_obs", tf.expand_dims(masked_obs[...,0], axis=-1), step=t)
+                tf.summary.image("obs", tf.expand_dims(obs[...,0], axis=-1), step=t)
+                tf.summary.image("mask", tf.expand_dims(mask[...,0], axis=-1), step=t)
+                img_logger.flush()
         if done and print_freq is not None and len(episode_rewards) % print_freq == 0:
             logger.record_tabular("steps", t)
             logger.record_tabular("episodes", num_episodes)
