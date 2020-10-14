@@ -108,7 +108,7 @@ def huber_loss(x, delta=1.0):
 
 class Predictor(tf.Module):
 
-    def __init__(self, func_list, observation_shape, num_actions, lr, grad_norm_clipping=None):
+    def __init__(self, env, func_list, observation_shape, num_actions, lr, grad_norm_clipping=None):
         self.num_actions = num_actions
         image_func, mask_func, action_func = func_list
         self.grad_norm_clipping = grad_norm_clipping
@@ -123,6 +123,41 @@ class Predictor(tf.Module):
             self.mask_network = mask_func(obs_curr_shape, latent_shape)
         with tf.name_scope('action_pred_network'):
             self.action_pred_network = action_func(obs_curr_shape, num_actions)
+        self.action_filter(env)
+
+    def action_filter(self, env):
+        # Desired translations for each action
+        self.d = 2
+        d = self.d
+
+        a_vecs = [
+            #ACTION_MEANING = {
+            [0 , 0], #0 : "NOOP",
+            [0 , 0], #1 : "FIRE",
+            [0 ,-d], #2 : "UP",
+            [d , 0], #3 : "RIGHT",
+            [-d, 0], #4 : "LEFT",
+            [0 , d], #5 : "DOWN",
+            [d ,-d], #6 : "UPRIGHT",
+            [-d,-d], #7 : "UPLEFT",
+            [d , d], #8 : "DOWNRIGHT",
+            [-d, d], #9 : "DOWNLEFT",
+            [0 ,-d], #10 : "UPFIRE",
+            [d , 0], #11 : "RIGHTFIRE",
+            [-d, 0], #12 : "LEFTFIRE",
+            [0 , d], #13 : "DOWNFIRE",
+            [d ,-d], #14 : "UPRIGHTFIRE",
+            [-d,-d], #15 : "UPLEFTFIRE",
+            [d , d], #16 : "DOWNRIGHTFIRE",
+            [-d, d], #17 : "DOWNLEFTFIRE",
+        ]
+
+        self.action2dir = []
+        action_set = env.unwrapped._action_set
+        action_set = [0, 1, 2, 5, 10, 13]
+        for idx in action_set:
+            self.action2dir.append(a_vecs[idx])
+        self.action2dir = np.array(self.action2dir)
 
     @tf.function
     def get_mask(self, obs_curr):
@@ -169,6 +204,9 @@ class Predictor(tf.Module):
             iu, ic = self.get_image_split(obs0_hist, a)
             m = self.get_mask(obs0_curr)
             m_old = self.get_mask(obs0_old)
+            dds = tf.nn.embedding_lookup(self.action2dir, action)
+            m_crop = tf.map_fn(lambda p: p[0][self.d-p[1][1]:84-self.d-p[1][1],self.d-p[1][0]:84-self.d-p[1][0]], (m, dds), dtype=tf.float32)
+            m_old_crop = m_old[:,self.d:84-self.d, self.d:84-self.d]
             masks = tf.concat([m_old, m], axis=-1)
             a_prob = self.get_action_pred(masks)
             errors = tf.reduce_mean(tf.reduce_sum(-tf.math.log(a_prob)*a, axis=1))
@@ -179,7 +217,8 @@ class Predictor(tf.Module):
             loss_recon = mse_loss(obs0_curr, ic+iu)
             loss_reg = abs_loss(0, m)
             loss_ap = errors
-            loss_all = loss_masked + loss_recon + 0.001*loss_reg + 0.1*loss_ap
+            loss_flow = mse_loss(m_crop, m_old_crop)
+            loss_all = loss_masked + loss_recon + 0.001*loss_reg + 0.1*loss_ap + 0.01*loss_flow
 
         grads = tape.gradient(loss_all, self.image_split_network.trainable_variables + self.mask_network.trainable_variables)
         if self.grad_norm_clipping:

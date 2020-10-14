@@ -151,6 +151,7 @@ def learn(env,
 
     if INFER_CONTROLLABLE_OBJECT:
         pred_model = deepq.Predictor(
+            env=env,
             func_list=pred_func,
             observation_shape=env.observation_space.shape,
             num_actions=env.action_space.n,
