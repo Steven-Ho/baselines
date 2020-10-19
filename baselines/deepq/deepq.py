@@ -2,6 +2,7 @@ import os.path as osp
 import os
 import tensorflow as tf
 import numpy as np
+from datetime import datetime
 
 from baselines import logger
 from baselines.common.schedules import LinearSchedule
@@ -40,6 +41,7 @@ def learn(env,
           callback=None,
           load_path=None,
           enhanced=False,
+          d=4,
           **network_kwargs
             ):
     """Train a deepq model.
@@ -156,6 +158,7 @@ def learn(env,
             observation_shape=env.observation_space.shape,
             num_actions=env.action_space.n,
             lr=lr,
+            d=d,
             grad_norm_clipping=10
         )
 
@@ -197,7 +200,7 @@ def learn(env,
         obs = np.expand_dims(np.array(obs), axis=0)
     reset = True
 
-    img_path = os.getcwd() + '/logs'
+    img_path = os.getcwd() + '/logs/' + datetime.now().strftime("%y%m%d-%H%M%S")
     if not os.path.exists(img_path):
         os.mkdir(img_path)
     img_logger = tf.summary.create_file_writer(img_path)

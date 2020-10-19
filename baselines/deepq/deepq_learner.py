@@ -108,12 +108,12 @@ def huber_loss(x, delta=1.0):
 
 class Predictor(tf.Module):
 
-    def __init__(self, env, func_list, observation_shape, num_actions, lr, grad_norm_clipping=None):
+    def __init__(self, env, func_list, observation_shape, num_actions, lr, d=4, grad_norm_clipping=None):
         self.num_actions = num_actions
         image_func, mask_func, action_func = func_list
         self.grad_norm_clipping = grad_norm_clipping
 
-        self.optimizer = tf.keras.optimizers.Adam(lr)
+        self.optimizer = tf.keras.optimizers.Adam(lr/5)
         latent_shape = (7, 7, 64)
         obs_hist_shape = (84, 84, 4)
         obs_curr_shape = (84, 84, 1)
@@ -123,12 +123,11 @@ class Predictor(tf.Module):
             self.mask_network = mask_func(obs_curr_shape, latent_shape)
         with tf.name_scope('action_pred_network'):
             self.action_pred_network = action_func(obs_curr_shape, num_actions)
-        self.action_filter(env)
+        self.action_filter(env, d)
 
-    def action_filter(self, env):
+    def action_filter(self, env, d):
         # Desired translations for each action
-        self.d = 2
-        d = self.d
+        self.d = d
 
         a_vecs = [
             #ACTION_MEANING = {
@@ -154,7 +153,7 @@ class Predictor(tf.Module):
 
         self.action2dir = []
         action_set = env.unwrapped._action_set
-        action_set = [0, 1, 2, 5, 10, 13]
+        # action_set = [0, 1, 2, 5, 10, 13]
         for idx in action_set:
             self.action2dir.append(a_vecs[idx])
         self.action2dir = np.array(self.action2dir)
@@ -218,7 +217,7 @@ class Predictor(tf.Module):
             loss_reg = abs_loss(0, m)
             loss_ap = errors
             loss_flow = mse_loss(m_crop, m_old_crop)
-            loss_all = loss_masked + loss_recon + 0.001*loss_reg + 0.1*loss_ap + 0.01*loss_flow
+            loss_all = loss_masked + loss_recon + 0.001*loss_reg + 0.1*loss_ap + 0.1*loss_flow
 
         grads = tape.gradient(loss_all, self.image_split_network.trainable_variables + self.mask_network.trainable_variables)
         if self.grad_norm_clipping:
